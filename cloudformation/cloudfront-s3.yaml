@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  CertificateArn:
+    Description: Certificate Arn
+    Type: String
+  DomainName:
+    Description: Domain Name
+    Type: String
+  WebACLArn:
+    Description: Web ACL Arn for CloudFront
+    Type: String
+  Route53HostedZone:
+    Description: Route53 Hosted Zone Id
+    Type: String
+
+Resources:
+  # -----
+  # S3
+  # -----
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: shiotomo-vite-app-bucket
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    DeletionPolicy: Delete
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Statement:
+          - Action: s3:GetObject
+            Effect: Allow
+            Resource: !Sub arn:aws:s3:::${S3Bucket}/*
+            Principal:
+              AWS: !Sub arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOriginAccessIdentity}
+    DeletionPolicy: Delete
+
+  # -----
+  # CloudFront
+  # -----
+  CloudFront:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: My Distribution
+        Enabled: true
+        Origins:
+          - Id: S3Bucket
+            DomainName: !GetAtt S3Bucket.DomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+        Aliases:
+          - !Ref DomainName
+        CustomErrorResponses:
+          -
+            ErrorCode: 403
+            ResponsePagePath: /
+            ResponseCode: 200
+            ErrorCachingMinTTL: 10
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          TargetOriginId: S3Bucket
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        IPV6Enabled: true
+        WebACLId: !Ref WebACLArn
+    DeletionPolicy: Delete
+
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: MyOAI
+    DeletionPolicy: Delete
+
+  # -----
+  # Route53 Records
+  # -----
+  Route53ARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFront.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref Route53HostedZone
+    DeletionPolicy: Delete
+
+  Route53AAAARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt CloudFront.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref Route53HostedZone
+    DeletionPolicy: Delete

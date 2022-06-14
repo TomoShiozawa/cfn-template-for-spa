@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  DomainName:
+    Description: Domain Name
+    Type: String
+
+Resources:
+  # -----
+  # ACM
+  # -----
+  ACM:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+    DeletionPolicy: Delete
+
+  # -----
+  # Route53 Hosted Zone
+  # -----
+  Route53HostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref DomainName
+    DeletionPolicy: Delete
+
+  # -----
+  # WAF
+  # -----
+  ##### IP Set
+  WAFIPSet:
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      NAME: MyIPSet
+      Addresses:
+        - 0000:0000:0000:0000:0000:0000:0000:0000/128
+      IPAddressVersion: IPV6
+      Scope: CLOUDFRONT
+    DeletionPolicy: Delete
+
+  ##### WAF Web ACL
+  WAFWebAcL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      DefaultAction:
+        Block:
+          CustomResponse:
+            ResponseCode: 404
+      Name: MyWebACL
+      Rules:
+        - Name: MyRule
+          Action:
+            Allow: {}
+          Priority: 0
+          Statement:
+            IPSetReferenceStatement:
+              Arn: !GetAtt WAFIPSet.Arn
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: MyRuleMetricName
+            SampledRequestsEnabled: true
+      Scope: CLOUDFRONT
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: MyWebACLMetricName
+        SampledRequestsEnabled: true
+    DeletionPolicy: Delete
